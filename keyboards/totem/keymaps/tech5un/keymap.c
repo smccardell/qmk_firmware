@@ -66,19 +66,29 @@ enum custom_keycodes {
 // RIGHT HAND HOME ROW MODS ├───────────────────────────────────┐
 
 #define SHT_N MT(MOD_RSFT, KC_N)
-#define CTL_E MT(MOD_LCTL, KC_E)
-#define ALT_I MT(MOD_LALT, KC_I)
-#define GUI_O MT(MOD_LGUI, KC_O)
+#define CTL_E MT(MOD_RCTL, KC_E)
+#define ALT_I MT(MOD_RALT, KC_I)
+#define GUI_O MT(MOD_RGUI, KC_O)
 
 #define SHT_J MT(MOD_RSFT, KC_J)
-#define CTL_K MT(MOD_LCTL, KC_K)
-#define ALT_L MT(MOD_LALT, KC_L)
-#define GUI_S MT(MOD_LGUI, KC_SCLN)
+#define CTL_K MT(MOD_RCTL, KC_K)
+#define ALT_L MT(MOD_RALT, KC_L)
+#define GUI_S MT(MOD_RGUI, KC_SCLN)
 
 // layer mods ├───────────────────────────────────┐
 #define LOWER LT(_LOWER, KC_SPC)
 #define RAISE LT(_RAISE, KC_BSPC)
 #define ADJUST LT(_ADJUST, KC_TAB)
+
+char chordal_hold_handedness(keypos_t key) {
+    if (key.row == 3 || key.row == 7) {
+        return '*';  // Exempt the outer columns.
+    }
+    // On split keyboards, typically, the first half of the rows are on the
+    // left, and the other half are on the right.
+    return key.row < MATRIX_ROWS / 2 ? 'L' : 'R';
+}
+
 
 // ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 // │ K E Y M A P S                                                                                                          │
@@ -232,6 +242,26 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 // └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 // ▝▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▘
 
+uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
+    switch (keycode) {
+        case MT(MOD_LGUI, KC_A):
+            return TAPPING_TERM + 100;
+        case MT(MOD_LALT, KC_R):
+            return TAPPING_TERM + 100;
+        case MT(MOD_LALT, KC_S):
+            return TAPPING_TERM + 100;
+        case MT(MOD_RALT, KC_L):
+            return TAPPING_TERM + 100;
+        case MT(MOD_RGUI, KC_SCLN):
+            return TAPPING_TERM + 100;
+        case MT(MOD_RALT, KC_I):
+            return TAPPING_TERM + 100;
+        case MT(MOD_RGUI, KC_O):
+            return TAPPING_TERM + 100;
+        default:
+            return TAPPING_TERM;
+    }
+}
 
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     switch (keycode) {
