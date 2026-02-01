@@ -47,11 +47,20 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 int tp_buttons;
 
 #if defined(RETRO_TAPPING) || defined(RETRO_TAPPING_PER_KEY) || (defined(AUTO_SHIFT_ENABLE) && defined(RETRO_SHIFT))
-int retro_tapping_counter = 0;
+bool     retro_tap_primed   = false;
+uint16_t retro_tap_curr_key = 0;
+#    if !(defined(AUTO_SHIFT_ENABLE) && defined(RETRO_SHIFT))
+uint8_t retro_tap_curr_mods = 0;
+uint8_t retro_tap_next_mods = 0;
+#    endif
 #endif
 
 #if defined(AUTO_SHIFT_ENABLE) && defined(RETRO_SHIFT) && !defined(NO_ACTION_TAPPING)
 #    include "process_auto_shift.h"
+#endif
+
+#ifdef BILATERAL_COMBINATIONS
+#    include "quantum.h"
 #endif
 
 #ifdef HOLD_ON_OTHER_KEY_PRESS_PER_KEY
@@ -77,7 +86,13 @@ void action_exec(keyevent_t event) {
         debug_event(event);
         ac_dprintf("\n");
 #if defined(RETRO_TAPPING) || defined(RETRO_TAPPING_PER_KEY) || (defined(AUTO_SHIFT_ENABLE) && defined(RETRO_SHIFT))
-        retro_tapping_counter++;
+        uint16_t event_keycode = get_event_keycode(event, false);
+        if (event.pressed) {
+            retro_tap_primed   = false;
+            retro_tap_curr_key = event_keycode;
+        } else if (retro_tap_curr_key == event_keycode) {
+            retro_tap_primed = true;
+        }
 #endif
     }
 
@@ -270,6 +285,9 @@ void process_record(keyrecord_t *record) {
     if (IS_NOEVENT(record->event)) {
         return;
     }
+#ifdef FLOW_TAP_TERM
+    flow_tap_update_last_event(record);
+#endif // FLOW_TAP_TERM
 
     if (!process_record_quantum(record)) {
 #ifndef NO_ACTION_ONESHOT
@@ -358,6 +376,222 @@ void register_mouse(uint8_t mouse_keycode, bool pressed) {
 #endif
 }
 
+#ifdef BILATERAL_COMBINATIONS
+#    ifndef BILATERAL_COMBINATIONS_LIMIT_CHORD_TO_N_KEYS
+#        define BILATERAL_COMBINATIONS_LIMIT_CHORD_TO_N_KEYS 8 /* modifier state is stored as a single byte in the format (GASC)R(GASC)L */
+#    endif
+#    ifndef BILATERAL_COMBINATIONS_DELAY_MODS_THAT_MATCH
+#        define BILATERAL_COMBINATIONS_DELAY_MODS_THAT_MATCH 0    /* disabled */
+#    endif
+#    ifndef BILATERAL_COMBINATIONS_DELAY_MATCHED_MODS_BY
+#        define BILATERAL_COMBINATIONS_DELAY_MATCHED_MODS_BY (~0) /* infinity */
+#    endif
+#    ifndef BILATERAL_COMBINATIONS_ALLOW_CROSSOVER_AFTER
+#        define BILATERAL_COMBINATIONS_ALLOW_CROSSOVER_AFTER (~0) /* infinity */
+#    endif
+#    ifndef BILATERAL_COMBINATIONS_ALLOW_SAMESIDED_AFTER
+#        define BILATERAL_COMBINATIONS_ALLOW_SAMESIDED_AFTER (~0) /* infinity */
+#    endif
+#    ifndef BILATERAL_COMBINATIONS_TYPING_STREAK_TIMEOUT
+#        define BILATERAL_COMBINATIONS_TYPING_STREAK_TIMEOUT 0    /* disabled */
+#    endif
+#    ifndef BILATERAL_COMBINATIONS_TYPING_STREAK_MODMASK
+#        define BILATERAL_COMBINATIONS_TYPING_STREAK_MODMASK (~0) /* all mods */
+#    endif
+static struct {
+    bool active;
+    keypos_t key;
+    uint8_t code;
+    uint8_t mods;
+    keypos_t chord_keys[BILATERAL_COMBINATIONS_LIMIT_CHORD_TO_N_KEYS];
+    uint8_t chord_taps[BILATERAL_COMBINATIONS_LIMIT_CHORD_TO_N_KEYS];
+    uint8_t chord_mods;
+    uint8_t chord_size;
+    bool left;
+    bool flushed;
+    uint16_t time;
+    deferred_token defermods;
+} bilateral_combinations = { false };
+
+static bool bilateral_combinations_left(keypos_t key) {
+#    ifdef SPLIT_KEYBOARD
+    return key.row < MATRIX_ROWS / 2;
+#    else
+    if (MATRIX_COLS > MATRIX_ROWS) {
+        return key.col < MATRIX_COLS / 2;
+    } else {
+        return key.row < MATRIX_ROWS / 2;
+    }
+#    endif
+}
+
+static void bilateral_combinations_chord_add(keypos_t key, uint8_t mods, uint8_t code) {
+    if (bilateral_combinations.chord_size < BILATERAL_COMBINATIONS_LIMIT_CHORD_TO_N_KEYS) {
+        bilateral_combinations.chord_keys[bilateral_combinations.chord_size] = key;
+        bilateral_combinations.chord_taps[bilateral_combinations.chord_size] = code;
+        bilateral_combinations.chord_size++;
+    }
+    bilateral_combinations.chord_mods |= mods;
+}
+
+static void bilateral_combinations_chord_del(keypos_t key, uint8_t mods, uint8_t code) {
+    bool found = false;
+    for (uint8_t k = 0; k < bilateral_combinations.chord_size; k++) {
+        if (found) {
+            /* shift the later keys in the chord over to the left */
+            bilateral_combinations.chord_keys[k-1] = bilateral_combinations.chord_keys[k];
+            bilateral_combinations.chord_taps[k-1] = bilateral_combinations.chord_taps[k];
+        }
+        else if (KEYEQ(key, bilateral_combinations.chord_keys[k])) {
+            found = true;
+        }
+    }
+    if (found) {
+        bilateral_combinations.chord_size--;
+    }
+    bilateral_combinations.chord_mods &= ~mods;
+}
+
+static void bilateral_combinations_apply_chord_mods(void) {
+    dprint("BILATERAL_COMBINATIONS: apply_chord_mods\n");
+    if (!bilateral_combinations.flushed) {
+        register_mods(bilateral_combinations.chord_mods);
+    }
+}
+
+static void bilateral_combinations_flush_chord_mods(void) {
+    dprint("BILATERAL_COMBINATIONS: flush_chord_mods\n");
+    bilateral_combinations_apply_chord_mods();
+    bilateral_combinations.flushed = true;
+}
+
+static void bilateral_combinations_flush_chord_taps(void) {
+    dprint("BILATERAL_COMBINATIONS: flush_chord_taps\n");
+    if (!bilateral_combinations.flushed) {
+        bilateral_combinations.flushed = true;
+
+        /* cancel mods added by chord keys */
+        clear_mods();
+
+        /* replay chord as individual taps */
+        for (uint8_t k = 0; k < bilateral_combinations.chord_size; k++) {
+            tap_code(bilateral_combinations.chord_taps[k]);
+        }
+    }
+}
+
+static uint32_t bilateral_combinations_defermods_callback(uint32_t trigger_time, void *cb_arg) {
+    dprint("BILATERAL_COMBINATIONS: defermods\n");
+    if (bilateral_combinations.active) {
+        bilateral_combinations_apply_chord_mods();
+        bilateral_combinations.defermods = INVALID_DEFERRED_TOKEN;
+    }
+    return 0;
+}
+
+static void bilateral_combinations_defermods_cancel(void) {
+    if (bilateral_combinations.defermods != INVALID_DEFERRED_TOKEN) {
+        cancel_deferred_exec(bilateral_combinations.defermods);
+        bilateral_combinations.defermods = INVALID_DEFERRED_TOKEN;
+    }
+}
+
+static void bilateral_combinations_defermods_schedule(uint8_t mods) {
+    if (!(mods & BILATERAL_COMBINATIONS_DELAY_MODS_THAT_MATCH)) {
+        register_mods(mods);
+        return;
+    }
+
+    if (bilateral_combinations.defermods != INVALID_DEFERRED_TOKEN) {
+        return; /* piggyback onto already scheduled callback */
+    }
+
+    bilateral_combinations.defermods = defer_exec(BILATERAL_COMBINATIONS_DELAY_MATCHED_MODS_BY, bilateral_combinations_defermods_callback, NULL);
+}
+
+static void bilateral_combinations_hold(action_t action, keyevent_t event, uint8_t mods) {
+    dprint("BILATERAL_COMBINATIONS: hold\n");
+    if (!bilateral_combinations.active) {
+#    if BILATERAL_COMBINATIONS_TYPING_STREAK_TIMEOUT
+        if (TIMER_DIFF_16(event.time, bilateral_combinations.time) < BILATERAL_COMBINATIONS_TYPING_STREAK_TIMEOUT
+            && (mods & BILATERAL_COMBINATIONS_TYPING_STREAK_MODMASK))
+        {
+            tap_code(action.layer_tap.code);
+            return; /* don't activate: we're in the middle of a typing streak! */
+        }
+#    endif
+        bilateral_combinations.active = true;
+        bilateral_combinations.key = event.key;
+        bilateral_combinations.code = action.key.code;
+        bilateral_combinations.mods = mods;
+        bilateral_combinations.chord_mods = 0; /* for chord_add() */
+        bilateral_combinations.chord_size = 0; /* for chord_add() */
+        bilateral_combinations.left = bilateral_combinations_left(event.key);
+        bilateral_combinations.flushed = false;
+    }
+    /* new key being held is on the other side of the keyboard: make it a tap! */
+    else if (bilateral_combinations_left(event.key) != bilateral_combinations.left) {
+        bilateral_combinations_flush_chord_taps();
+        tap_code(action.layer_tap.code);
+        return; /* skip defermods */
+    }
+    bilateral_combinations.time = event.time;
+    bilateral_combinations_chord_add(event.key, mods, action.layer_tap.code);
+    bilateral_combinations_defermods_schedule(mods);
+}
+
+static void bilateral_combinations_release(action_t action, keyevent_t event, uint8_t mods) {
+    dprint("BILATERAL_COMBINATIONS: release\n");
+    if (bilateral_combinations.active) {
+        /* original key: clear out bilateral combinations */
+        if (KEYEQ(event.key, bilateral_combinations.key)) {
+            bilateral_combinations.active = false;
+            bilateral_combinations_defermods_cancel();
+        }
+        /* different key but same modifier: ignore release */
+        else if (mods == bilateral_combinations.mods) {
+            return; /* skip unregister_mods() */
+        }
+
+        bilateral_combinations_chord_del(event.key, mods, action.layer_tap.code);
+    }
+    unregister_mods(mods);
+}
+
+static void bilateral_combinations_tap(keyevent_t event) {
+    dprint("BILATERAL_COMBINATIONS: tap\n");
+    if (bilateral_combinations.active) {
+        uint16_t threshold = 0;
+
+        if (bilateral_combinations_left(event.key) == bilateral_combinations.left) {
+            threshold += BILATERAL_COMBINATIONS_ALLOW_SAMESIDED_AFTER;
+        }
+        else {
+            threshold += BILATERAL_COMBINATIONS_ALLOW_CROSSOVER_AFTER;
+        }
+
+        if (threshold > 0) {
+            if ((bilateral_combinations.chord_mods & BILATERAL_COMBINATIONS_DELAY_MODS_THAT_MATCH)
+                && bilateral_combinations.chord_mods == bilateral_combinations.mods)
+            {
+                threshold = MAX(threshold, BILATERAL_COMBINATIONS_DELAY_MATCHED_MODS_BY);
+            }
+            if (TIMER_DIFF_16(event.time, bilateral_combinations.time) > threshold) {
+                bilateral_combinations_flush_chord_mods();
+                return; /* skip flush_chord_taps() */
+            }
+        }
+
+        bilateral_combinations_flush_chord_taps();
+    }
+#   if BILATERAL_COMBINATIONS_TYPING_STREAK_TIMEOUT
+    else {
+        bilateral_combinations.time = event.time;
+    }
+#   endif
+}
+#endif /* BILATERAL_COMBINATIONS */
+
 /** \brief Take an action and processes it.
  *
  * FIXME: Needs documentation.
@@ -403,6 +637,12 @@ void process_action(keyrecord_t *record, action_t action) {
                     }
                     send_keyboard_report();
                 }
+#ifdef BILATERAL_COMBINATIONS
+                if (!(IS_MODIFIER_KEYCODE(action.key.code) || action.key.code == KC_NO)) {
+                    // regular keycode tap during mod-tap hold
+                    bilateral_combinations_tap(event);
+                }
+#endif
                 register_code(action.key.code);
             } else {
                 unregister_code(action.key.code);
@@ -510,12 +750,21 @@ void process_action(keyrecord_t *record, action_t action) {
                             } else
 #    endif
                             {
+#    ifdef BILATERAL_COMBINATIONS
+                                // mod-tap tap
+                                bilateral_combinations_tap(event);
+#    endif
                                 ac_dprintf("MODS_TAP: Tap: register_code\n");
                                 register_code(action.key.code);
                             }
                         } else {
                             ac_dprintf("MODS_TAP: No tap: add_mods\n");
+#    ifdef BILATERAL_COMBINATIONS
+                            // mod-tap hold
+                            bilateral_combinations_hold(action, event, mods);
+#    else
                             register_mods(mods);
+#    endif
                         }
                     } else {
                         if (tap_count > 0) {
@@ -528,14 +777,12 @@ void process_action(keyrecord_t *record, action_t action) {
                             unregister_code(action.key.code);
                         } else {
                             ac_dprintf("MODS_TAP: No tap: add_mods\n");
-#    if defined(RETRO_TAPPING) && defined(DUMMY_MOD_NEUTRALIZER_KEYCODE)
-                            // Send a dummy keycode to neutralize flashing modifiers
-                            // if the key was held and then released with no interruptions.
-                            if (retro_tapping_counter == 2) {
-                                neutralize_flashing_modifiers(get_mods());
-                            }
-#    endif
+#    ifdef BILATERAL_COMBINATIONS
+                            // mod-tap release
+                            bilateral_combinations_release(action, event, mods);
+#    else
                             unregister_mods(mods);
+#    endif
                         }
                     }
                     break;
@@ -691,6 +938,10 @@ void process_action(keyrecord_t *record, action_t action) {
 #    ifndef NO_ACTION_TAPPING /* tap key */
                     if (event.pressed) {
                         if (tap_count > 0) {
+#        ifdef BILATERAL_COMBINATIONS
+                            // layer-tap tap
+                            bilateral_combinations_tap(event);
+#        endif
                             ac_dprintf("KEYMAP_TAP_KEY: Tap: register_code\n");
                             register_code(action.layer_tap.code);
                         } else {
@@ -817,6 +1068,10 @@ void process_action(keyrecord_t *record, action_t action) {
         case ACT_LAYER_TAP_EXT:
 #    endif
             led_set(host_keyboard_leds());
+#    ifndef NO_ACTION_ONESHOT
+            // don't release the key
+            do_release_oneshot = false;
+#    endif
             break;
         default:
             break;
@@ -825,30 +1080,44 @@ void process_action(keyrecord_t *record, action_t action) {
 
 #ifndef NO_ACTION_TAPPING
 #    if defined(RETRO_TAPPING) || defined(RETRO_TAPPING_PER_KEY) || (defined(AUTO_SHIFT_ENABLE) && defined(RETRO_SHIFT))
-    if (!is_tap_action(action)) {
-        retro_tapping_counter = 0;
-    } else {
+    if (is_tap_action(action)) {
         if (event.pressed) {
             if (tap_count > 0) {
-                retro_tapping_counter = 0;
+                retro_tap_primed = false;
+            } else {
+#        if !(defined(AUTO_SHIFT_ENABLE) && defined(RETRO_SHIFT))
+                retro_tap_curr_mods = retro_tap_next_mods;
+                retro_tap_next_mods = get_mods();
+#        endif
             }
         } else {
+            uint16_t event_keycode = get_event_keycode(event, false);
+#        if !(defined(AUTO_SHIFT_ENABLE) && defined(RETRO_SHIFT))
+            uint8_t curr_mods = get_mods();
+#        endif
             if (tap_count > 0) {
-                retro_tapping_counter = 0;
-            } else {
+                retro_tap_primed = false;
+            } else if (retro_tap_curr_key == event_keycode) {
                 if (
 #        ifdef RETRO_TAPPING_PER_KEY
-                    get_retro_tapping(get_event_keycode(record->event, false), record) &&
+                    get_retro_tapping(event_keycode, record) &&
 #        endif
-                    retro_tapping_counter == 2) {
+                    retro_tap_primed) {
 #        if defined(AUTO_SHIFT_ENABLE) && defined(RETRO_SHIFT)
                     process_auto_shift(action.layer_tap.code, record);
 #        else
+                    register_mods(retro_tap_curr_mods);
+                    wait_ms(TAP_CODE_DELAY);
                     tap_code(action.layer_tap.code);
+                    wait_ms(TAP_CODE_DELAY);
+                    unregister_mods(retro_tap_curr_mods);
 #        endif
                 }
-                retro_tapping_counter = 0;
+                retro_tap_primed = false;
             }
+#        if !(defined(AUTO_SHIFT_ENABLE) && defined(RETRO_SHIFT))
+            retro_tap_next_mods = curr_mods;
+#        endif
         }
     }
 #    endif
@@ -1151,6 +1420,23 @@ bool is_tap_action(action_t action) {
             return false;
     }
     return false;
+}
+
+uint16_t get_tap_keycode(uint16_t keycode) {
+    switch (keycode) {
+        case QK_MOD_TAP ... QK_MOD_TAP_MAX:
+            return QK_MOD_TAP_GET_TAP_KEYCODE(keycode);
+        case QK_LAYER_TAP ... QK_LAYER_TAP_MAX:
+            return QK_LAYER_TAP_GET_TAP_KEYCODE(keycode);
+        case QK_SWAP_HANDS ... QK_SWAP_HANDS_MAX:
+            // IS_SWAP_HANDS_KEYCODE() tests for the special action keycodes
+            // like SH_TOGG, SH_TT, ..., which overlap the SH_T(kc) range.
+            if (!IS_SWAP_HANDS_KEYCODE(keycode)) {
+                return QK_SWAP_HANDS_GET_TAP_KEYCODE(keycode);
+            }
+            break;
+    }
+    return keycode;
 }
 
 /** \brief Debug print (FIXME: Needs better description)

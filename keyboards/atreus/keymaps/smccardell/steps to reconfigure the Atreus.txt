@@ -5,15 +5,24 @@ steps to reconfigure the Atreus:
 1.  go to https://config.qmk.fm/#/atreus/astar/LAYOUT_pcb_up
 2.  upload the keymap.json you wish to edit
 3.  edit as necessary
-4.  download the smccardell.json file to "C:\Users\shawn\qmk_firmware\keyboards\atreus\keymaps\tech5un"
+4.  download the tech5un.json file to "C:\Users\shawn\qmk_firmware\keyboards\atreus\keymaps\tech5un"
 5.  start QMK MSYS
-6.  convert the json keymap from step 4 to c file using command: qmk json2c -o OneDrive/qmk_firmware/keyboards/atreus/keymaps/tech5un/keymap.c OneDrive/qmk_firmware/keyboards/atreus/keymaps/tech5un/smccardell.json
+6.  convert the json keymap from step 4 to c file using command: qmk json2c -o OneDrive/qmk_firmware/keyboards/atreus/keymaps/tech5un/keymap.c OneDrive/qmk_firmware/keyboards/atreus/keymaps/tech5un/tech5un.json
 7.  compile the c file into the hex file using command: qmk compile -kb atreus/astar -km tech5un
-8.  confirm "C:\Users\shawn\qmk_firmware\.build\atreus_astar_tech5un.hex" was created/updated
+8.  confirm "C:\Users\shawn\OneDrive\sqmk_firmware\.build\atreus_astar_smccardell.hex" was created/updated
 9.  open QMK Toolbar
-10. load the hex file from step 8
+10. load the hex file from step 8	
 11. put the board into DFU (bootloader) mode pressing the RESET button on the lower (2) layer, where the B button is
 12. after a few seconds, an audible noise will be heard, some yellow text indicating that the mode was switched will appear in the Toolbar Console, and the FLASH button will be ENABLED
 13. quickly press the FLASH button while in this mode as it will exit this mode after a few moments
 14. the Toolbox Console will give the status of how the flash went, culminating in a complete notification and the mode switching back to normal
 15. print out the key mapping for ease of reference
+
+
+
+newest using qmk_userspaces since vial file is too big to fit in MCU
+1. alter keymap files in C:\Users\shawn\OneDrive\qmk_userspace\keyboards\atreus\astar\keymaps\tech5un
+2. commit changes to local repo and push to remote
+3. check workflows @ https://github.com/smccardell/qmk_userspace/actions
+4. download files from https://github.com/smccardell/qmk_userspace/releases/tag/latest
+5. follow steps 9 - 14 from above using the downloaded file from 4
