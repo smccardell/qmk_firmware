@@ -50,9 +50,6 @@ const key_override_t *key_overrides[] = {
 // const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 //     [0] = LAYOUT(QK_BOOT, KC_1, KC_2, KC_3, KC_4, KC_5, KC_6, KC_7, KC_8, KC_9, KC_0, QK_BOOT, KC_SPACE, KC_Q, KC_W, KC_E, KC_R, KC_T, KC_Y, KC_U, KC_I, KC_O, KC_P, KC_SPACE, KC_SPACE, KC_A, KC_S, KC_D, KC_F, KC_G, KC_H, KC_J, KC_K, KC_L, KC_SEMICOLON, KC_SPACE, KC_SPACE, KC_Z, KC_X, KC_C, KC_V, KC_B, KC_N, KC_M, KC_COMMA, KC_DOT, KC_SLASH, KC_SPACE, KC_RIGHT_BRACKET, KC_LEFT_BRACKET, KC_LEFT_BRACKET, KC_RIGHT_BRACKET, KC_SPACE, KC_SPACE, KC_SPACE, KC_SPACE, KC_SPACE, KC_SPACE, KC_SPACE, KC_SPACE, KC_SPACE, KC_SPACE),
 // };
-// const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
-//     [0] = LAYOUT( ),
-// };
 
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     [_COLEMAK] = LAYOUT(
@@ -80,7 +77,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
       _______, KC_LBRC,  KC_RBRC,  KC_LPRN,  KC_RPRN,  XXXXXXX,                         KC_KP_ASTERISK, KC_7,  KC_8,  KC_9,  KC_KP_PLUS,  _______,
       _______, KC_SCLN,  KC_QUOTE, KC_PIPE,  KC_UNDS,  KC_BSLS,                         KC_KP_SLASH,    KC_4,  KC_5,  KC_6,  KC_KP_MINUS, KC_KP_EQUAL,
       _______, KC_LABK,  KC_RABK,  KC_COLN,  KC_EQUAL, XXXXXXX,                         KC_KP_DOT,      KC_1,  KC_2,  KC_3,  KC_KP_0,     _______,
-                           _______, _______,                                                            _______,  _______, 
+                           _______, _______,                                                            KC_KP_0,   d, 
                                       _______, _______, _______,           _______, _______, _______,
                                               _______, _______,                          _______, _______
   ),
