@@ -29,8 +29,7 @@ enum custom_keycodes {
     C_CUT,
     C_COPY,
     C_PASTE,
-    OS_LSFT,
-    OS_LCTL
+    RS_ENT
 };
 
 #define C_LEAD QK_LEADER
@@ -38,7 +37,7 @@ enum custom_keycodes {
 #define QWERTY PDF(_QWERTY)
 #define ALT_DEL ALT_T(KC_DELETE)
 #define NAV_SPC LT(_NAV, KC_SPC)
-#define SYN_ENT LT(_SYNUM, KC_ENTER)1
+#define SYN_ENT LT(_SYNUM, KC_ENTER)
 #define NAV_DEL LT(_NAV, KC_DELETE)
 #define SYN_BSPC LT(_SYNUM, KC_BSPC)
 #define OS_NAV OSL(_NAV)
@@ -47,8 +46,9 @@ enum custom_keycodes {
 #define C_UNDO LCTL(KC_Z)
 #define C_REDO LCTL(KC_Y)
 #define C_CUT LCTL(KC_X)
-#define C_COPY(KC_C)
+#define C_COPY LCTL(KC_C)
 #define C_PASTE LCTL(KC_V)
+#define RS_ENT RSFT_T(KC_ENT)
 
 
 
@@ -56,9 +56,9 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     [_COLEMAK] = LAYOUT(
       KC_ESC,    KC_1,   KC_2,    KC_3,      KC_4,    KC_5,                         KC_6,    KC_7,    KC_8,     KC_9,    KC_0,      KC_LGUI,
       KC_TAB,     KC_Q,    KC_W,    KC_F,      KC_P,    KC_B,                         KC_J,    KC_L,    KC_U,     KC_Y,    KC_QUOT,   QK_REP,
-      OS_LCTL,    KC_A,    KC_R,    KC_S,      KC_T,    KC_G,                         KC_M,    KC_N,    KC_E,     KC_I,    KC_O,      OS_RCTL,
-      OS_LSFT,    KC_Z,    KC_X,    KC_C,      KC_D,    KC_V,                         KC_K,    KC_H,    KC_COMM,  KC_DOT,  KC_SLSH,   OS_RSFT,
-                           C_LEAD, C_PASTE,                                                           C_UNDO,  CW_TOGG, 
+      OS_LSFT,    KC_A,    KC_R,    KC_S,      KC_T,    KC_G,                         KC_M,    KC_N,    KC_E,     KC_I,    KC_O,      OS_RCTL,
+      OS_LCTL,    KC_Z,    KC_X,    KC_C,      KC_D,    KC_V,                         KC_K,    KC_H,    KC_COMM,  KC_DOT,  KC_SLSH,   RS_ENT,
+                           KC_UNDS, C_PASTE,                                                           C_UNDO,  KC_UNDS, 
                                                ALT_DEL, NAV_SPC,  SYN_ENT,  NAV_DEL,  SYN_BSPC,  OS_FUN,
                                                         OS_LCTL, C_LEAD,   C_UNDO,   OS_RSFT
   ),
@@ -66,9 +66,9 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     [_QWERTY] = LAYOUT(
       KC_ESC,  KC_1,  KC_2,       KC_3,    KC_4,    KC_5,                          KC_6,    KC_7,    KC_8,     KC_9,    KC_0,      KC_LGUI,
       KC_TAB,    KC_Q,  KC_W,       KC_E,    KC_R,    KC_T,                          KC_Y,    KC_U,    KC_I,     KC_O,    KC_P,      QK_REP,
-      OS_LCTL,   KC_A,  KC_S,       KC_D,    KC_F,    KC_G,                          KC_H,    KC_J,    KC_K,     KC_L,    KC_QUOT,   OS_LCTL,
-      OS_LSFT,   KC_Z,  KC_X,       KC_C,    KC_V,    KC_B,                          KC_N,    KC_M,    KC_COMM,  KC_DOT,  KC_SLSH,   OS_RSFT,
-                           C_LEAD, C_PASTE,                                                           C_UNDO,  CW_TOGG, 
+      OS_LSFT,   KC_A,  KC_S,       KC_D,    KC_F,    KC_G,                          KC_H,    KC_J,    KC_K,     KC_L,    KC_QUOT,   OS_RCTL,
+      OS_LCTL,   KC_Z,  KC_X,       KC_C,    KC_V,    KC_B,                          KC_N,    KC_M,    KC_COMM,  KC_DOT,  KC_SLSH,   RS_ENT,
+                           KC_UNDS, C_PASTE,                                                           C_UNDO,  KC_UNDS, 
                                                ALT_DEL, NAV_SPC,  SYN_ENT,  NAV_DEL,  SYN_BSPC,  OS_FUN,
                                                         OS_LCTL, C_LEAD,   C_UNDO,   OS_RSFT
   ),
@@ -113,7 +113,7 @@ void leader_end_user(void) {
         SEND_STRING("select count(*)\n  from ");
     } else if (leader_sequence_four_keys(KC_D, KC_O, KC_P, KC_L)) {
         // Leader, d, o, p, l => dbms_oupput.put_line('');
-        SEND_STRING("dbms_oupput.put_line('');");
+        SEND_STRING("dbms_output.put_line('');");
     }  
     // if (leader_sequence_one_key(KC_F)) {
     //     // Leader, f => Types the below string
